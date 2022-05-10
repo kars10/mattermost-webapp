@@ -267,19 +267,6 @@ function canAutomaticallyCloseBackticks(message: string) {
     return {allowSending: true};
 }
 
-function sendOnCtrlEnter(message: string, ctrlOrMetaKeyPressed: boolean, isSendMessageOnCtrlEnter: boolean, caretPosition: number) {
-    const match = message.substring(0, caretPosition).match(Constants.TRIPLE_BACK_TICKS);
-    if (isSendMessageOnCtrlEnter && ctrlOrMetaKeyPressed && (!match || match.length % 2 === 0)) {
-        return {allowSending: true};
-    } else if (!isSendMessageOnCtrlEnter && (!match || match.length % 2 === 0)) {
-        return {allowSending: true};
-    } else if (ctrlOrMetaKeyPressed && match && match.length % 2 !== 0) {
-        return canAutomaticallyCloseBackticks(message);
-    }
-
-    return {allowSending: false};
-}
-
 export function postMessageOnKeyPress(
     event: React.KeyboardEvent,
     message: string,
@@ -308,22 +295,28 @@ export function postMessageOnKeyPress(
         return {allowSending: false, ignoreKeyPress: true};
     }
 
-    if (
-        message.trim() === '' ||
-        !(sendMessageOnCtrlEnter || sendCodeBlockOnCtrlEnter)
-    ) {
+    // if the message body is empty, send on ENTER (invoke delete modal), without requiring ctrlOrMeta
+    if (message.trim() === '') {
         return {allowSending: true};
     }
 
+    const match = message.substring(0, caretPosition).match(Constants.TRIPLE_BACK_TICKS);
+    const caretIsWithinCodeBlock = match && (match.length % 2 !== 0);
+    const ctrlOrMetaRequired = sendMessageOnCtrlEnter || (sendCodeBlockOnCtrlEnter && caretIsWithinCodeBlock);
     const ctrlOrMetaKeyPressed = event.ctrlKey || event.metaKey;
 
-    if (sendMessageOnCtrlEnter) {
-        return sendOnCtrlEnter(message, ctrlOrMetaKeyPressed, true, caretPosition);
-    } else if (sendCodeBlockOnCtrlEnter) {
-        return sendOnCtrlEnter(message, ctrlOrMetaKeyPressed, false, caretPosition);
+    // Don't send on ENTER if ctrlOrMeta is not pressed (if required by user setting)
+    if (ctrlOrMetaRequired && (!ctrlOrMetaKeyPressed)) {
+        return {allowSending: false};
     }
 
-    return {allowSending: false};
+    if (ctrlOrMetaRequired && ctrlOrMetaKeyPressed && caretIsWithinCodeBlock)
+    {
+        // allow sending and automatically close backticks if possible
+        return canAutomaticallyCloseBackticks(message);
+    }
+
+    return {allowSending: true};
 }
 
 export function isErrorInvalidSlashCommand(error: ServerError | null): boolean {
